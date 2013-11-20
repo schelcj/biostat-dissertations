@@ -21,47 +21,107 @@ my $opts = Getopt::Compact->new(
 )->opts();
 ## use tidy
 
-my $DISS_FIELDS = [qw(name role committee_member term title)];
-my $BO_FIELDS   = [
+my @JSON_FIELDS = (qw(name committee year title));
+my @DISS_FIELDS = (qw(name role committee_member term title));
+my @BO_FIELDS   = (
   qw(
     emplid name degree_descrshort acad_prog_descr term
     degr_confer_dt acad_sub_plan_descr trnscr_descr
     role committee_member title
     )
-];
+);
 
-# TODO clean up the BO data
 # TODO compare old and new diss data
 # TODO merge new and old data
 # TODO write out new diss json data
 
-my $bo_data       = get_bo_data($opts->{bo_file}, $opts->{year});
-my $dissertations = get_old_json_data($opts->{input_dissertations});
+my $bo_data              = get_bo_data($opts->{bo_file}, $opts->{year});
+my $dissertations        = get_dissertations($opts->{input_dissertations});
+my $json_data            = build_json($bo_data);
+my $merged_dissertations = merge_dissertations($dissertations, $bo_data);
 
-sub get_old_json_data {
+sub get_dissertations {
   my ($file) = @_;
   my $json = from_json(read_file($file));
-  return $json->{aaData};
+  return [map {my %a = (); @a{@JSON_FIELDS} = @{$_}; \%a} @{$json->{aaData}}];
 }
 
 sub get_bo_data {
   my ($file, $year) = @_;
 
-  my $diss_data = [];
-  my $fields    = $DISS_FIELDS;
-  my $in_csv    = Class::CSV->parse(
-    filename => $file,
-    fields   => $BO_FIELDS,
-  );
+  my $diss_data = {};
+  my $fields    = \@DISS_FIELDS;
+  my $in_csv    = Class::CSV->parse(filename => $file, fields => \@BO_FIELDS);
+  my @lines     = @{$in_csv->lines()};
 
-  my @lines = @{$in_csv->lines()};
   shift @lines;    # remove the header row
   pop @lines;      # there is cruft on the last line, no idea why
 
   for my $line (@lines) {
     next if $line->term !~ /$year/;
-    push @{$diss_data}, {map {$_ => $line->$_} @{$DISS_FIELDS}};
+    next if $line->role !~ /coch|chai/i;
+
+    my $name = reverseName(cleanName($line->name));
+
+    if ($line->committee_member) {
+      my $committee_member = reverseName(cleanName($line->committee_member));
+      if (  none {$_ eq $committee_member} @{$diss_data->{$name}{committee_members}}
+        and none {samePerson($_, $committee_member)} @{$diss_data->{$name}{committee_members}})
+      {
+        push @{$diss_data->{$name}{committee_members}}, $committee_member;
+      }
+    }
+
+    $diss_data->{$name}{titles} = [];
+
+    if ($line->title !~ /^\s*$/) {
+      my $title = $line->title;
+      chomp($title);
+      push @{$diss_data->{$name}{titles}}, $title;
+    }
+
+    ($diss_data->{$name}{year} = $line->term) =~ s/\D//g;
   }
 
   return $diss_data;
+}
+
+sub build_json {
+  my ($student_ref) = @_;
+  my $param_ref = [];
+
+  for my $student (keys %{$student_ref}) {
+    my $title = join(q{ }, uniq @{$student_ref->{$student}{titles}});
+    ($title = autoformat($title, {case => 'highlight'}) || q{}) =~ s/[\n\r]+//g;
+
+    my $committee;
+    my @members = uniq @{$student_ref->{$student}{committee_members}};
+    given (scalar @members) {
+      when ($_ >= 3) {$committee = join(q{, and }, @members)}
+      when ($_ >= 2) {$committee = join(q{ and },  @members)}
+      default        {$committee = join(q{},       @members)}
+    }
+
+    push @{$param_ref}, {
+      name      => reverseName(cleanName($student)),
+      committee => $committee,
+      year      => $student_ref->{$student}{year},
+      title     => $title,
+      };
+  }
+
+  return $param_ref;
+}
+
+sub merge_disserations {
+  my ($current, $new) = @_;
+
+  my $result_ref = {};
+
+  map {
+  # if this is a new student, push onto $current
+  push @{$current}, $_ if first_index {} 
+  } @{$new};
+
+  return $result_ref;
 }
