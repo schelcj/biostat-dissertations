@@ -43,7 +43,7 @@ my $dissertations        = get_dissertations($opts->{input_dissertations});
 my $json_data            = build_json($bo_data);
 my $merged_dissertations = merge_dissertations($dissertations, $json_data);
 
-write_json($merged_dissertations);
+write_json($opts->{output_dissertations}, $merged_dissertations);
 
 sub get_dissertations {
   my ($file) = @_;
@@ -77,7 +77,9 @@ sub get_bo_data {
       }
     }
 
-    $diss_data->{$name}{titles} = [];
+    if (not exists $diss_data->{$name}{titles}) {
+      $diss_data->{$name}{titles} = [];
+    }
 
     if ($line->title !~ /^\s*$/) {
       my $title = $line->title;
@@ -122,7 +124,7 @@ sub build_json {
 sub merge_dissertations {
   my ($current, $new) = @_;
 
-  my @list     = @{$current};
+  my @list = @{$current};
   my @students = map {$_->{name}} @{$current};
 
   for my $student (@{$new}) {
@@ -135,8 +137,12 @@ sub merge_dissertations {
 }
 
 sub write_json {
-  my ($dissertations) = @_;
-  my @json_data = sort {$a->{year} <=> $b->{year}} @{$dissertations};
-  print Dumper \@json_data;
+  my ($file, $data) = @_;
+
+  my @json_data = sort {$a->{year} <=> $b->{year}} @{$data};
+  my $json      = to_json({aaData => \@json_data}, {utf8 => 1, pretty => 1});
+
+  write_file($file, $json);
+
   return;
 }
