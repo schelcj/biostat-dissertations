@@ -133,10 +133,14 @@ sub merge_dissertations {
 }
 
 sub write_json {
-  my ($file, $data) = @_;
+  my ($file, $students) = @_;
 
-  my @json_data = sort {$a->{year} <=> $b->{year}} @{$data};
-  my $json      = to_json({aaData => \@json_data}, {utf8 => 1, pretty => 1});
+  my @data = ();
+  for my $student (sort {$a->{year} <=> $b->{year}} @{$students}) {
+    push @data, [map {$student->{$_}} @JSON_FIELDS];
+  }
+
+  my $json = to_json({aaData => \@data}, {utf8 => 1, pretty => 1});
 
   write_file($file, $json);
 
