@@ -1,10 +1,13 @@
 #!/usr/bin/perl
 
+## no critic (ProhibitVoidMap,ProhibitMagicNumbers)
+## no critic (RequireLocalizedPunctuationVars,ProhibitComplexMappings)
+
 use Modern::Perl;
 use Class::CSV;
 use JSON;
 use Getopt::Compact;
-use List::MoreUtils qw(all none uniq);
+use List::MoreUtils qw(all none uniq any);
 use Text::Autoformat;
 use Text::Names qw(reverseName cleanName samePerson);
 use File::Slurp qw(read_file write_file);
@@ -16,7 +19,7 @@ my $opts = Getopt::Compact->new(
     [[qw(b bo_file)],              q{Exported Buisness Objects spreadsheet}, q{:s}],
     [[qw(y year)],                 q{Year to pull records for from BO data}, q{:i}],
     [[qw(i input_dissertations)],  q{Existing dissertations json data},      q{:s}],
-    [[qw(o output_dissertations)], q{New dissertation json data},            q{:s}], 
+    [[qw(o output_dissertations)], q{New dissertation json data},            q{:s}],
   ]
 )->opts();
 ## use tidy
@@ -38,7 +41,9 @@ my @BO_FIELDS   = (
 my $bo_data              = get_bo_data($opts->{bo_file}, $opts->{year});
 my $dissertations        = get_dissertations($opts->{input_dissertations});
 my $json_data            = build_json($bo_data);
-my $merged_dissertations = merge_dissertations($dissertations, $bo_data);
+my $merged_dissertations = merge_dissertations($dissertations, $json_data);
+
+write_json($merged_dissertations);
 
 sub get_dissertations {
   my ($file) = @_;
@@ -81,6 +86,7 @@ sub get_bo_data {
     }
 
     ($diss_data->{$name}{year} = $line->term) =~ s/\D//g;
+    $diss_data->{$name}{name} = $name;
   }
 
   return $diss_data;
@@ -113,15 +119,24 @@ sub build_json {
   return $param_ref;
 }
 
-sub merge_disserations {
+sub merge_dissertations {
   my ($current, $new) = @_;
 
-  my $result_ref = {};
+  my @list     = @{$current};
+  my @students = map {$_->{name}} @{$current};
 
-  map {
-  # if this is a new student, push onto $current
-  push @{$current}, $_ if first_index {} 
-  } @{$new};
+  for my $student (@{$new}) {
+    if (not any {/$student->{name}/} @students) {
+      push @list, $student;
+    }
+  }
 
-  return $result_ref;
+  return \@list;
+}
+
+sub write_json {
+  my ($dissertations) = @_;
+  my @json_data = sort {$a->{year} <=> $b->{year}} @{$dissertations};
+  print Dumper \@json_data;
+  return;
 }
