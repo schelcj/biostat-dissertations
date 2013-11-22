@@ -34,10 +34,6 @@ my @BO_FIELDS   = (
     )
 );
 
-# TODO compare old and new diss data
-# TODO merge new and old data
-# TODO write out new diss json data
-
 my $bo_data              = get_bo_data($opts->{bo_file}, $opts->{year});
 my $dissertations        = get_dissertations($opts->{input_dissertations});
 my $json_data            = build_json($bo_data);
